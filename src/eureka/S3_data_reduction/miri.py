@@ -1,6 +1,11 @@
 import numpy as np
 from astropy.io import fits
 import astraeus.xarrayIO as xrio
+try:
+    from jwst import datamodels
+except ImportError:
+    print('WARNING: Unable to load the jwst package. As a result, the MIRI '
+          'wavelength solution will not be able to be calculated in Stage 3.')
 from . import nircam
 from ..lib.util import read_time
 
@@ -60,17 +65,17 @@ def read(filename, data, meta, log):
     v0 = hdulist['VAR_RNOISE', 1].data
     # If wavelengths are all zero --> use hardcoded wavelengths
     # Otherwise use the wavelength array from the header
-    if np.all(hdulist['WAVELENGTH', 1].data == 0):
-        if meta.firstFile:
-            log.writelog('  WARNING: The wavelength for the simulated MIRI '
-                         'data are currently hardcoded because they are not '
-                         'in the .fits files themselves')
-        wave_2d = np.tile(wave_MIRI_hardcoded(), (sci.shape[2], 1))[:, ::-1]
+    wave_2d = np.tile(wave_MIRI_hardcoded(meta, log), (sci.shape[2], 1))
+    wave_2d = np.swapaxes(wave_2d, 0, 1)
+    """if np.all(hdulist['WAVELENGTH', 1].data == 0):
+        # wave_2d = np.tile(wave_MIRI_hardcoded(meta, log), (sci.shape[2], 1))
+        # wave_2d = np.swapaxes(wave_2d, 0, 1)
+        wave_2d = wave_MIRI_jwst(filename, meta, log)
     else:
-        wave_2d = hdulist['WAVELENGTH', 1].data
+        wave_2d = hdulist['WAVELENGTH', 1].data"""
     int_times = hdulist['INT_TIMES', 1].data
 
-    # Record integration mid-times in BJD_TDB
+    # Record integration mid-times in BMJD_TDB
     if (hasattr(meta, 'time_file') and meta.time_file is not None):
         time = read_time(meta, data, log)
     elif len(int_times['int_mid_BJD_TDB']) == 0:
@@ -140,7 +145,7 @@ def read(filename, data, meta, log):
 
     # Record units
     flux_units = data.attrs['shdr']['BUNIT']
-    time_units = 'BJD_TDB'
+    time_units = 'BMJD_TDB'
     wave_units = 'microns'
 
     # MIRI appears to be rotated by 90° compared to NIRCam, so rotating arrays
@@ -151,35 +156,47 @@ def read(filename, data, meta, log):
         err = np.swapaxes(err, 1, 2)[:, :, ::-1]
         dq = np.swapaxes(dq, 1, 2)[:, :, ::-1]
         v0 = np.swapaxes(v0, 1, 2)[:, :, ::-1]
-        if not np.all(hdulist['WAVELENGTH', 1].data == 0):
-            wave_2d = np.swapaxes(wave_2d, 0, 1)[:, :, ::-1]
+        wave_2d = np.swapaxes(wave_2d, 0, 1)[:, ::-1]
         if (meta.firstFile and meta.spec_hw == meta.spec_hw_range[0] and
                 meta.bg_hw == meta.bg_hw_range[0]):
             # If not, we've already done this and don't want to switch it back
             temp = np.copy(meta.ywindow)
             meta.ywindow = meta.xwindow
             meta.xwindow = sci.shape[2] - temp[::-1]
+    
+    # Figure out the x-axis (aka the original y-axis) pixel numbers since we've
+    # reversed the order of the x-axis
+    x = np.arange(sci.shape[2])[::-1]
+    x = None
 
     data['flux'] = xrio.makeFluxLikeDA(sci, time, flux_units, time_units,
-                                       name='flux')
+                                       name='flux', x=x)
     data['err'] = xrio.makeFluxLikeDA(err, time, flux_units, time_units,
-                                      name='err')
+                                      name='err', x=x)
     data['dq'] = xrio.makeFluxLikeDA(dq, time, "None", time_units,
-                                     name='dq')
+                                     name='dq', x=x)
     data['v0'] = xrio.makeFluxLikeDA(v0, time, flux_units, time_units,
-                                     name='v0')
+                                     name='v0', x=x)
     data['wave_2d'] = (['y', 'x'], wave_2d)
     data['wave_2d'].attrs['wave_units'] = wave_units
 
     return data, meta, log
 
 
-def wave_MIRI_hardcoded():
+def wave_MIRI_jwst(filename, meta, log):
     '''Compute wavelengths for simulated MIRI observations.
 
-    This code contains the wavelength array for MIRI data. It was generated
-    by using the jwst and gwcs packages to get the wavelength information out
+    This code uses the jwst package to get the wavelength information out
     of the WCS.
+
+    Parameters
+    ----------
+    filename : str
+        The filename of the file being read in.
+    meta : eureka.lib.readECF.MetaClass
+        The metadata object.
+    log : logedit.Logedit
+        The current log.
 
     Returns
     -------
@@ -193,6 +210,53 @@ def wave_MIRI_hardcoded():
     - Apr 2022  Sebastian Zieba
         Initial Version
     '''
+    if meta.firstFile:
+        log.writelog('  WARNING: Using the jwst package because the '
+                     'wavelengths are not currently in the .fits files '
+                     'themselves')
+
+    # Using the code from https://github.com/spacetelescope/jwst/pull/6964
+    # as of August 8th
+    with datamodels.open(filename) as model:
+        data_shape = model.data.shape
+        if len(data_shape) > 2:
+            data_shape = data_shape[-2:]
+        index_array = np.indices(data_shape[::-1])
+        wcs_array = model.meta.wcs(*index_array)
+        return wcs_array[2].T
+
+
+def wave_MIRI_hardcoded(meta, log):
+    '''Compute wavelengths for simulated MIRI observations.
+
+    This code contains the wavelength array for MIRI data. It was generated
+    by using the jwst and gwcs packages to get the wavelength information out
+    of the WCS.
+
+    Parameters
+    ----------
+    meta : eureka.lib.readECF.MetaClass
+        The metadata object.
+    log : logedit.Logedit
+        The current log.
+
+    Returns
+    -------
+    lam_x_full : list
+        A list of the wavelengths
+
+    Notes
+    -----
+    History:
+
+    - Apr 2022  Sebastian Zieba
+        Initial Version
+    '''
+    if meta.firstFile:
+        log.writelog('  WARNING: The wavelength for the simulated MIRI '
+                     'data are currently hardcoded because they are not '
+                     'in the .fits files themselves')
+
     # This array only contains the wavelength information for the BB
     lam_x = [np.nan, np.nan, 14.381619594576934, 14.366161703458102,
              14.350688919921913, 14.335201058149064, 14.319697932320251,

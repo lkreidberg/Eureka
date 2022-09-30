@@ -67,8 +67,9 @@ def plot_fit(lc, model, meta, fitter, isTitle=True):
         residuals = flux - model
         fig = plt.figure(5101, figsize=(8, 6))
         plt.clf()
-        ax = fig.subplots(3, 1)
-        ax[0].errorbar(lc.time, flux, yerr=unc, fmt='.', color='w',
+        #ax = fig.subplots(3, 1)
+        ax = fig.subplots(2, 1)
+        """ax[0].errorbar(lc.time, flux, yerr=unc, fmt='.', color='w',
                        ecolor=color, mec=color)
         ax[0].plot(lc.time, model, '.', ls='', ms=2, color='0.3', zorder=10)
         if isTitle:
@@ -76,18 +77,96 @@ def plot_fit(lc, model, meta, fitter, isTitle=True):
                             f'{fitter}')
         ax[0].set_ylabel('Normalized Flux', size=14)
         ax[0].set_xticks([])
+        ax[0].set_ylim(0.9995,1.0015)"""
+        
 
-        ax[1].errorbar(lc.time, flux/model_sys, yerr=unc, fmt='.', color='w',
-                       ecolor=color, mec=color)
-        ax[1].plot(new_time, model_phys, color='0.3', zorder=10)
-        ax[1].set_ylabel('Calibrated Flux', size=14)
-        ax[1].set_xticks([])
+        period = 1.5804
+        t0 = 1.51766
 
-        ax[2].errorbar(lc.time, residuals*1e6, yerr=unc*1e6, fmt='.',
-                       color='w', ecolor=color, mec=color)
-        ax[2].plot(lc.time, np.zeros_like(lc.time), color='0.3', zorder=10)
-        ax[2].set_ylabel('Residuals (ppm)', size=14)
-        ax[2].set_xlabel(str(lc.time_units), size=14)
+
+        HGAtimes = np.array([59780.64102878, 59780.94231441, 59780.98336919, 59781.32570959,
+       59781.53957605, 59781.66810833, 59781.93887547, 59782.01043689]) - 5.978e4
+
+        HGAphaseangles = 360*(HGAtimes - t0)/period
+        HGAphases = (HGAtimes - t0)/period
+
+        #for i, HGA in enumerate(HGAphasesangles): 
+        """for i, HGA in enumerate(HGAphases): 
+            if i == 0: ax[0].axvline(HGA, color = '0.5', linestyle = '--', zorder = 100, label = 'HGA move')
+            else: ax[0].axvline(HGA, color = '0.5', linestyle = '--', zorder = 100)
+            ax[1].axvline(HGA, color = '0.5', linestyle = '--', zorder = 100)"""
+
+        bins_pre_eclipse = np.arange(0.025, 0.476, 0.05)
+        bins_post_eclipse = np.arange(0.525, 0.976, 0.05)
+        bins = np.concatenate([bins_pre_eclipse, bins_post_eclipse])
+        for b in bins:
+            if b > 0.5: ax[0].axvline(b - 1, zorder = 100, color = '0.3', linestyle = '--', linewidth = 0.8)
+            else: ax[0].axvline(b, color = '0.3', zorder = 100, linestyle = '--', linewidth = '0.8')
+
+
+        phaseangle = 360.*(lc.time - t0)/period
+        phase = (lc.time - t0)/period
+        #ax[0].plot(lc.time, (flux/model_sys - 1)*1e6, marker = '.', mfc=color, mew = 0, linestyle = 'None', alpha = 0.2)
+        #ax[0].plot(phaseangle, (flux/model_sys - 1)*1e6, marker = '.', mfc=color, mew = 0, linestyle = 'None', alpha = 0.2)
+        ax[0].plot(phase, (flux/model_sys - 1)*1e6, marker = '.', mfc=color, mew = 0, linestyle = 'None', alpha = 0.2)
+
+        nbins = 100
+        bintime = np.linspace(lc.time.min(), lc.time.max(), nbins)
+        binphaseangle = 360.*(bintime - t0)/period
+        binphase = (bintime - t0)/period
+        bindata = np.zeros_like(bintime)
+        binerr = np.zeros_like(bintime)
+        for i in range(1,nbins):
+            ind = (lc.time>bintime[i-1])&(lc.time<=bintime[i])
+            n = sum(ind)
+            bindata[i] = np.average(flux[ind]/model_sys[ind])
+            binerr[i] = np.std(flux[ind]/model_sys[ind])/np.sqrt(n)
+        #ax[0].errorbar(bintime, (bindata -1)*1e6, binerr*1e6, fmt = 'o', markersize = 3, color='w', ecolor='k', mec='k', zorder = 100)
+        #ax[0].errorbar(binphaseangle, (bindata -1)*1e6, binerr*1e6, fmt = 'o', markersize = 3, color='w', ecolor='k', mec='k', zorder = 100)
+        ax[0].errorbar(binphase, (bindata -1)*1e6, binerr*1e6, fmt = 'o', markersize = 3, color='w', ecolor='k', mec='k', zorder = 100)
+
+        newphaseangle = 360.*(new_time - t0)/period
+        newphase = (new_time - t0)/period
+        #ax[0].plot(new_time, (model_phys - 1)*1e6, color='0.3', zorder=10)
+        #ax[0].plot(newphaseangle, (model_phys - 1)*1e6, color='0.3', zorder=10)
+        ax[0].plot(newphase, (model_phys - 1)*1e6, color='0.3', zorder=10)
+        ax[0].set_ylabel('Calibrated Flux (ppm)', size=14)
+        ax[0].set_xticks([])
+        ax[0].set_ylim(-200,2000)
+        ax[0].tick_params(direction = 'inout', top = True, right = True)
+        ax[0].minorticks_on()
+        #ax[0].legend(loc = 'best', framealpha = 1)
+
+        #ax[1].plot(lc.time, residuals*1e6, marker ='.', mfc = color, mew = 0, linestyle = 'None', alpha = 0.2)
+        #ax[1].plot(phaseangle, residuals*1e6, marker ='.', mfc = color, mew = 0, linestyle = 'None', alpha = 0.2)
+        ax[1].plot(phase, residuals*1e6, marker ='.', mfc = color, mew = 0, linestyle = 'None', alpha = 0.2)
+
+        binresid = np.zeros_like(bintime)
+        binresiderr = np.zeros_like(bintime)
+        for i in range(1,nbins):
+            ind = (lc.time>bintime[i-1])&(lc.time<=bintime[i])
+            n = sum(ind)
+            binresid[i] = np.average(1e6*residuals[ind])
+            binresiderr[i] = np.std(1e6*residuals[ind])/np.sqrt(n)
+
+        #ax[1].plot(lc.time, np.zeros_like(lc.time), color='0.3', zorder=10)
+        #ax[1].errorbar(bintime, binresid, binresiderr, fmt = 'o', markersize = 3, color='w', ecolor='k', mec='k', zorder = 100)
+        #ax[1].plot(phaseangle, np.zeros_like(lc.time), color='0.3', zorder=10)
+        #ax[1].errorbar(binphaseangle, binresid, binresiderr, fmt = 'o', markersize = 3, color='w', ecolor='k', mec='k', zorder = 100)
+        ax[1].plot(phase, np.zeros_like(lc.time), color='0.3', zorder=10)
+        ax[1].errorbar(binphase, binresid, binresiderr, fmt = 'o', markersize = 3, color='w', ecolor='k', mec='k', zorder = 100)
+        for b in bins:
+            if b > 0.5: ax[1].axvline(b - 1, zorder = 100, color = '0.3', linestyle = '--', linewidth = 0.8)
+            else: ax[1].axvline(b, color = '0.3', zorder = 100, linestyle = '--', linewidth = '0.8')
+
+
+        ax[1].set_ylabel('Residuals (ppm)', size=14)
+        #ax[1].set_xlabel(str(lc.time_units), size=14)
+        #ax[1].set_xlabel("Phase angle", size=14)
+        ax[1].set_xlabel("Orbital phase", size=14)
+        ax[1].set_ylim(-500, 500)
+        ax[1].tick_params(direction = 'inout', top = True, right = True)
+        ax[1].minorticks_on()
 
         fig.subplots_adjust(hspace=0)
         fig.align_ylabels(ax)
@@ -449,6 +528,7 @@ def plot_GP_components(lc, model, meta, fitter, isTitle=True):
                                     (channel+1)*len(new_time)]
             model_GP_component = model_GP_component[channel*len(lc.time):
                                                     (channel+1)*len(lc.time)]
+
 
         residuals = flux - model
         fig = plt.figure(5102, figsize=(8, 6))

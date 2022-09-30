@@ -130,6 +130,8 @@ def plot_spectra(eventlabel, ecf_path=None, s5_meta=None):
             fit_methods = meta.fit_method.strip('[').strip(']').strip()
             fit_methods = fit_methods.split(',')
 
+            print("LK says meta.y_unit = ", meta.y_unit.lower())
+
             accepted_y_units = ['Rp/Rs', 'Rp/R*', '(Rp/Rs)^2', '(Rp/R*)^2',
                                 'Fp/Fs', 'Fp/F*']
             if 'rp' in meta.y_unit.lower():
@@ -352,6 +354,7 @@ def parse_s5_saves(meta, fit_methods, y_param, channel_key='shared'):
 
             fname = f'S5_{fitter}_samples_{channel_key}'
 
+            print("LK says y_param = ", y_param)
             if y_param == 'fp':
                 keys = [key for key in full_keys if 'fp' in key]
             else:
@@ -371,6 +374,7 @@ def parse_s5_saves(meta, fit_methods, y_param, channel_key='shared'):
                 lowers.append(np.abs(fitted_values["-1sigma"][ind]))
                 uppers.append(np.abs(fitted_values["+1sigma"][ind]))
                 medians.append(np.abs(fitted_values["50th"][ind]))
+                print("LK checking values: ", key, np.abs(fitted_values["50th"][ind]), "+/-", fitted_values["-1sigma"][ind])
 
             errs = np.array([lowers, uppers])
             medians = np.array(medians)
